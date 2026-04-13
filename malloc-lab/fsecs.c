@@ -1,5 +1,5 @@
 /****************************
- * High-level timing wrappers
+ * 상위 수준 timing wrapper
  ****************************/
 #include <stdio.h>
 #include "fsecs.h"
@@ -8,22 +8,22 @@
 #include "ftimer.h"
 #include "config.h"
 
-static double Mhz;  /* estimated CPU clock frequency */
+static double Mhz;  /* 추정된 CPU 클럭 주파수 */
 
-extern int verbose; /* -v option in mdriver.c */
+extern int verbose; /* mdriver.c의 -v 옵션 */
 
 /*
- * init_fsecs - initialize the timing package
+ * init_fsecs - timing 패키지를 초기화합니다.
  */
 void init_fsecs(void)
 {
-    Mhz = 0; /* keep gcc -Wall happy */
+    Mhz = 0; /* gcc -Wall 경고를 피하기 위한 초기화 */
 
 #if USE_FCYC
     if (verbose)
 	printf("Measuring performance with a cycle counter.\n");
 
-    /* set key parameters for the fcyc package */
+    /* fcyc 패키지의 핵심 파라미터를 설정 */
     set_fcyc_maxsamples(20); 
     set_fcyc_clear_cache(1);
     set_fcyc_compensate(1);
@@ -40,7 +40,7 @@ void init_fsecs(void)
 }
 
 /*
- * fsecs - Return the running time of a function f (in seconds)
+ * fsecs - 함수 f의 실행 시간을 초 단위로 반환합니다.
  */
 double fsecs(fsecs_test_funct f, void *argp) 
 {
@@ -53,5 +53,4 @@ double fsecs(fsecs_test_funct f, void *argp)
     return ftimer_gettod(f, argp, 10);
 #endif 
 }
-
 

@@ -1,24 +1,24 @@
 /*
- * ftimer.c - Estimate the time (in seconds) used by a function f 
+ * ftimer.c - 함수 f가 사용하는 시간을 초 단위로 추정합니다.
  * 
- * Copyright (c) 2002, R. Bryant and D. O'Hallaron, All rights reserved.
- * May not be used, modified, or copied without permission.
+ * Copyright (c) 2002, R. Bryant and D. O'Hallaron, 모든 권리 보유.
+ * 허가 없이 사용, 수정, 복사할 수 없습니다.
  *
- * Function timers that estimate the running time (in seconds) of a function f.
- *    ftimer_itimer: version that uses the interval timer
- *    ftimer_gettod: version that uses gettimeofday
+ * 함수 f의 실행 시간을 초 단위로 추정하는 function timer들입니다.
+ *    ftimer_itimer: interval timer를 사용하는 버전
+ *    ftimer_gettod: gettimeofday를 사용하는 버전
  */
 #include <stdio.h>
 #include <sys/time.h>
 #include "ftimer.h"
 
-/* function prototypes */
+/* 함수 prototype */
 static void init_etime(void);
 static double get_etime(void);
 
 /* 
- * ftimer_itimer - Use the interval timer to estimate the running time
- * of f(argp). Return the average of n runs.  
+ * ftimer_itimer - interval timer를 사용해 f(argp)의 실행 시간을
+ * 추정합니다. n번 실행한 평균을 반환합니다.
  */
 double ftimer_itimer(ftimer_test_funct f, void *argp, int n)
 {
@@ -34,8 +34,8 @@ double ftimer_itimer(ftimer_test_funct f, void *argp, int n)
 }
 
 /* 
- * ftimer_gettod - Use gettimeofday to estimate the running time of
- * f(argp). Return the average of n runs.  
+ * ftimer_gettod - gettimeofday를 사용해 f(argp)의 실행 시간을
+ * 추정합니다. n번 실행한 평균을 반환합니다.
  */
 double ftimer_gettod(ftimer_test_funct f, void *argp, int n)
 {
@@ -54,18 +54,18 @@ double ftimer_gettod(ftimer_test_funct f, void *argp, int n)
 
 
 /*
- * Routines for manipulating the Unix interval timer
+ * Unix interval timer를 다루는 루틴
  */
 
-/* The initial value of the interval timer */
+/* interval timer의 초기값 */
 #define MAX_ETIME 86400   
 
-/* static variables that hold the initial value of the interval timer */
+/* interval timer의 초기값을 보관하는 static 변수 */
 static struct itimerval first_u; /* user time */
 static struct itimerval first_r; /* real time */
-static struct itimerval first_p; /* prof time*/
+static struct itimerval first_p; /* prof time */
 
-/* init the timer */
+/* timer를 초기화 */
 static void init_etime(void)
 {
     first_u.it_interval.tv_sec = 0;
@@ -87,7 +87,7 @@ static void init_etime(void)
     setitimer(ITIMER_PROF, &first_p, NULL);
 }
 
-/* return elapsed real seconds since call to init_etime */
+/* init_etime 호출 이후 경과한 실제 초를 반환 */
 static double get_etime(void) {
     struct itimerval v_curr;
     struct itimerval r_curr;
@@ -100,7 +100,6 @@ static double get_etime(void) {
     return (double) ((first_p.it_value.tv_sec - r_curr.it_value.tv_sec) +
 		     (first_p.it_value.tv_usec - r_curr.it_value.tv_usec)*1e-6);
 }
-
 
 
 

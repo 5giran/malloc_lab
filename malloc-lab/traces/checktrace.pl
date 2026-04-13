@@ -3,20 +3,20 @@
 use Getopt::Std;
 
 #######################################################################
-# checktrace - trace file consistency checker and balancer.  
+# checktrace - trace file 일관성 검사 및 balance 조정 도구.
 #
-# Copyright (c) 2002, R. Bryant and D. O'Hallaron, All rights reserved.
-# May not be used, modified, or copied without permission.
+# Copyright (c) 2002, R. Bryant and D. O'Hallaron, 모든 권리 보유.
+# 허가 없이 사용, 수정, 복사할 수 없습니다.
 #
-# This script reads a Malloc Lab trace file, checks it for consistency,
-# and outputs a balanced version by appending any necessary free requests.
+# 이 스크립트는 Malloc Lab trace file을 읽어 일관성을 검사하고,
+# 필요한 free 요청을 덧붙여 balanced 버전을 출력합니다.
 #
 #######################################################################
  
-$| = 1; # autoflush output on every print statement
+$| = 1; # 모든 print 문마다 출력을 즉시 flush
 
 #
-# void usage(void) - print help message and terminate
+# void usage(void) - 도움말을 출력하고 종료
 #
 sub usage 
 {
@@ -29,11 +29,11 @@ sub usage
 }
 
 ##############
-# Main routine
+# 메인 루틴
 ##############
 
 # 
-# Parse and check the command line arguments
+# 명령줄 인자를 파싱하고 검사
 #
 getopts('hs');
 if ($opt_h) {
@@ -42,14 +42,13 @@ if ($opt_h) {
 $summary = $opt_s;
 
 # 
-# HASH keeps a running tally of outstanding alloc/realloc 
-# requests. When a free request is encountered, the corresponding 
-# hash entry is deleted. When we are finished reading the trace,
-# what is left are the unmatched alloc/realloc requests.
+# HASH는 아직 대응되지 않은 alloc/realloc 요청을 계속 집계합니다.
+# free 요청을 만나면 해당 hash 항목을 삭제합니다.
+# trace를 끝까지 읽고 남는 것은 짝이 없는 alloc/realloc 요청입니다.
 #
 %HASH = (); 
 
-# Read the trace header values
+# trace header 값을 읽음
 $heap_size = <STDIN>;
 chomp($heap_size);
 
@@ -63,7 +62,7 @@ $weight = <STDIN>;
 chomp($weight);
 
 # 
-# Find any allocate requests that don't have a matching free requests
+# 대응되는 free 요청이 없는 allocate 요청을 찾음
 #
 $linenum = 4;
 $requestnum = 0;
@@ -73,15 +72,15 @@ while ($line = <STDIN>) {
 
     ($cmd, $id, $size) = split(" ", $line);
 
-    # ignore blank lines
+    # 빈 줄은 무시
     if (!$cmd) {
 	next;
     }
 
-    # save the line for output later
+    # 나중에 출력할 수 있도록 줄을 저장
     $lines[$requestnum++] = $line;
 
-    #ignore realloc requests, as long as they are preceeded by an alloc request
+    # 이전에 alloc 요청이 있었다면 realloc 요청은 그대로 허용
     if ($cmd eq "r") {
 	if (!$HASH{$id}) {
 	    die "$0: ERROR[$linenum]: realloc without previous alloc\n";
@@ -116,7 +115,7 @@ while ($line = <STDIN>) {
 }
 
 # 
-# If called with -s argument , print a brief balance summary and exit
+# -s 인자와 함께 호출되면 간단한 balance 요약만 출력하고 종료
 #
 if ($summary) {
     if (!%HASH) {
@@ -129,7 +128,7 @@ if ($summary) {
 }
 
 #
-# Output a balanced version of the trace
+# balanced된 trace 버전을 출력
 #
 $new_ops = keys %HASH;
 $new_num_ops = $old_num_ops + $new_ops;
@@ -139,12 +138,12 @@ print "$num_blocks\n";
 print "$new_num_ops\n";
 print "$weight\n";
 
-# print the old requests
+# 기존 요청을 출력
 foreach $item (@lines) {
     print "$item\n";
 }
 
-# print a set of free requests that will balance the trace
+# trace를 balance시키는 free 요청 집합을 출력
 foreach $key (sort keys %HASH) {
     if ($HASH{$key} ne "a" and $HASH{$key} ne "r") {
 	die "$0: ERROR: Invalid free request in residue.\n";

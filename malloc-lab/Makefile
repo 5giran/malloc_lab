@@ -1,5 +1,5 @@
 #
-# Students' Makefile for the Malloc Lab
+# Malloc Lab용 학생 Makefile
 #
 TEAM = bovik
 VERSION = 1

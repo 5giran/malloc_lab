@@ -1,9 +1,9 @@
 /* 
- * clock.c - Routines for using the cycle counters on x86, 
- *           Alpha, and Sparc boxes.
+ * clock.c - x86, Alpha, Sparc 시스템에서 cycle counter를
+ *           사용하기 위한 루틴입니다.
  * 
- * Copyright (c) 2002, R. Bryant and D. O'Hallaron, All rights reserved.
- * May not be used, modified, or copied without permission.
+ * Copyright (c) 2002, R. Bryant and D. O'Hallaron, 모든 권리 보유.
+ * 허가 없이 사용, 수정, 복사할 수 없습니다.
  */
 
 #include <stdio.h>
@@ -14,52 +14,52 @@
 
 
 /******************************************************* 
- * Machine dependent functions 
+ * 머신 의존 함수
  *
- * Note: the constants __i386__ and  __alpha
- * are set by GCC when it calls the C preprocessor
- * You can verify this for yourself using gcc -v.
+ * 참고: __i386__와 __alpha 상수는
+ * GCC가 C 전처리기를 호출할 때 설정합니다.
+ * gcc -v로 직접 확인할 수 있습니다.
  *******************************************************/
 
 #if defined(__i386__)  
 /*******************************************************
- * Pentium versions of start_counter() and get_counter()
+ * Pentium용 start_counter()와 get_counter() 버전
  *******************************************************/
 
 
 /* $begin x86cyclecounter */
-/* Initialize the cycle counter */
+/* cycle counter를 초기화 */
 static unsigned cyc_hi = 0;
 static unsigned cyc_lo = 0;
 
 
-/* Set *hi and *lo to the high and low order bits  of the cycle counter.  
-   Implementation requires assembly code to use the rdtsc instruction. */
+/* *hi와 *lo를 cycle counter의 상위/하위 비트로 설정합니다.
+   구현에는 rdtsc 명령을 사용하는 assembly 코드가 필요합니다. */
 void access_counter(unsigned *hi, unsigned *lo)
 {
-    asm("rdtsc; movl %%edx,%0; movl %%eax,%1"   /* Read cycle counter */
-	: "=r" (*hi), "=r" (*lo)                /* and move results to */
-	: /* No input */                        /* the two outputs */
+    asm("rdtsc; movl %%edx,%0; movl %%eax,%1"   /* cycle counter를 읽고 */
+	: "=r" (*hi), "=r" (*lo)                /* 결과를 두 출력값으로 */
+	: /* 입력 없음 */                        /* 옮깁니다 */
 	: "%edx", "%eax");
 }
 
-/* Record the current value of the cycle counter. */
+/* cycle counter의 현재 값을 기록합니다. */
 void start_counter()
 {
     access_counter(&cyc_hi, &cyc_lo);
 }
 
-/* Return the number of cycles since the last call to start_counter. */
+/* 마지막 start_counter 호출 이후의 cycle 수를 반환합니다. */
 double get_counter()
 {
     unsigned ncyc_hi, ncyc_lo;
     unsigned hi, lo, borrow;
     double result;
 
-    /* Get cycle counter */
+    /* cycle counter를 읽음 */
     access_counter(&ncyc_hi, &ncyc_lo);
 
-    /* Do double precision subtraction */
+    /* double precision 뺄셈 수행 */
     lo = ncyc_lo - cyc_lo;
     borrow = lo > ncyc_lo;
     hi = ncyc_hi - cyc_hi - borrow;
@@ -74,30 +74,28 @@ double get_counter()
 #elif defined(__alpha)
 
 /****************************************************
- * Alpha versions of start_counter() and get_counter()
+ * Alpha용 start_counter()와 get_counter() 버전
  ***************************************************/
 
-/* Initialize the cycle counter */
+/* cycle counter를 초기화 */
 static unsigned cyc_hi = 0;
 static unsigned cyc_lo = 0;
 
 
-/* Use Alpha cycle timer to compute cycles.  Then use
-   measured clock speed to compute seconds 
+/* Alpha cycle timer를 사용해 cycle을 계산한 뒤
+   측정된 clock speed로 초 단위 시간을 계산합니다.
 */
 
 /*
- * counterRoutine is an array of Alpha instructions to access 
- * the Alpha's processor cycle counter. It uses the rpcc 
- * instruction to access the counter. This 64 bit register is 
- * divided into two parts. The lower 32 bits are the cycles 
- * used by the current process. The upper 32 bits are wall 
- * clock cycles. These instructions read the counter, and 
- * convert the lower 32 bits into an unsigned int - this is the 
- * user space counter value.
- * NOTE: The counter has a very limited time span. With a 
- * 450MhZ clock the counter can time things for about 9 
- * seconds. */
+ * counterRoutine은 Alpha의 processor cycle counter에 접근하는
+ * Alpha 명령어 배열입니다. counter에 접근하기 위해 rpcc 명령을
+ * 사용합니다. 이 64비트 레지스터는 두 부분으로 나뉩니다.
+ * 하위 32비트는 현재 프로세스가 사용한 cycle 수이고, 상위 32비트는
+ * wall clock cycle입니다. 이 명령어들은 counter를 읽은 뒤
+ * 하위 32비트를 unsigned int로 변환합니다. 이것이 user space의
+ * counter 값입니다.
+ * 참고: 이 counter는 측정 가능한 시간이 매우 짧습니다.
+ * 450MHz clock에서는 약 9초 정도만 측정할 수 있습니다. */
 static unsigned int counterRoutine[] =
 {
     0x601fc000u,
@@ -105,13 +103,13 @@ static unsigned int counterRoutine[] =
     0x6bfa8001u
 };
 
-/* Cast the above instructions into a function. */
+/* 위 명령어 배열을 함수로 캐스팅합니다. */
 static unsigned int (*counter)(void)= (void *)counterRoutine;
 
 
 void start_counter()
 {
-    /* Get cycle counter */
+    /* cycle counter를 읽음 */
     cyc_hi = 0;
     cyc_lo = counter();
 }
@@ -136,11 +134,10 @@ double get_counter()
 #else
 
 /****************************************************************
- * All the other platforms for which we haven't implemented cycle
- * counter routines. Newer models of sparcs (v8plus) have cycle
- * counters that can be accessed from user programs, but since there
- * are still many sparc boxes out there that don't support this, we
- * haven't provided a Sparc version here.
+ * 아래는 cycle counter 루틴을 아직 구현하지 않은 다른 플랫폼입니다.
+ * 더 최신 Sparc(v8plus) 모델에는 사용자 프로그램에서 접근 가능한
+ * cycle counter가 있지만, 이를 지원하지 않는 Sparc 시스템도 아직 많아
+ * 여기서는 Sparc 버전을 제공하지 않습니다.
  ***************************************************************/
 
 void start_counter()
@@ -164,11 +161,11 @@ double get_counter()
 
 
 /*******************************
- * Machine-independent functions
+ * 머신 독립 함수
  ******************************/
 double ovhd()
 {
-    /* Do it twice to eliminate cache effects */
+    /* cache 효과를 제거하기 위해 두 번 수행 */
     int i;
     double result;
 
@@ -180,8 +177,8 @@ double ovhd()
 }
 
 /* $begin mhz */
-/* Estimate the clock rate by measuring the cycles that elapse */ 
-/* while sleeping for sleeptime seconds */
+/* sleeptime초 동안 sleep하는 동안 경과한 cycle 수를 측정해 */
+/* clock rate를 추정합니다 */
 double mhz_full(int verbose, int sleeptime)
 {
     double rate;
@@ -195,13 +192,13 @@ double mhz_full(int verbose, int sleeptime)
 }
 /* $end mhz */
 
-/* Version using a default sleeptime */
+/* 기본 sleeptime을 사용하는 버전 */
 double mhz(int verbose)
 {
     return mhz_full(verbose, 2);
 }
 
-/** Special counters that compensate for timer interrupt overhead */
+/** timer interrupt overhead를 보정하는 특수 counter */
 
 static double cyc_per_tick = 0.0;
 
@@ -209,7 +206,7 @@ static double cyc_per_tick = 0.0;
 #define THRESHOLD 1000
 #define RECORDTHRESH 3000
 
-/* Attempt to see how much time is used by timer interrupt */
+/* timer interrupt가 얼마나 시간을 쓰는지 추정 */
 static void callibrate(int verbose)
 {
     double oldt;
@@ -234,7 +231,7 @@ static void callibrate(int verbose)
 		    cyc_per_tick = cpt;
 		/*
 		  if (verbose)
-		  printf("Saw event lasting %.0f cycles and %d ticks.  Ratio = %f\n",
+		  printf("%.0f cycle과 %d tick이 걸린 이벤트를 관측. 비율 = %f\n",
 		  newt-oldt, (int) (newc-oldc), cpt);
 		*/
 		e++;
@@ -271,9 +268,8 @@ double get_comp_counter()
     ticks = t.tms_utime - start_tick;
     ctime = time - ticks*cyc_per_tick;
     /*
-      printf("Measured %.0f cycles.  Ticks = %d.  Corrected %.0f cycles\n",
+      printf("측정된 cycle %.0f. Ticks = %d. 보정 후 %.0f cycles\n",
       time, (int) ticks, ctime);
     */
     return ctime;
 }
-

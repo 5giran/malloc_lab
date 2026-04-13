@@ -1,11 +1,11 @@
 /*
  * mdriver.c - CS:APP Malloc Lab Driver
  *
- * Uses a collection of trace files to tests a malloc/free/realloc
- * implementation in mm.c.
+ * trace file 모음을 사용해 mm.c의 malloc/free/realloc 구현을
+ * 테스트합니다.
  *
- * Copyright (c) 2002, R. Bryant and D. O'Hallaron, All rights reserved.
- * May not be used, modified, or copied without permission.
+ * Copyright (c) 2002, R. Bryant and D. O'Hallaron, 모든 권리 보유.
+ * 허가 없이 사용, 수정, 복사할 수 없습니다.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +16,7 @@
 #include <float.h>
 #include <time.h>
 
-extern char *optarg; // Added declaration for optarg
+extern char *optarg; // optarg 선언 추가
 
 #include "mm.h"
 #include "memlib.h"
@@ -24,30 +24,30 @@ extern char *optarg; // Added declaration for optarg
 #include "config.h"
 
 /**********************
- * Constants and macros
+ * 상수와 매크로
  **********************/
 
-/* Misc */
-#define MAXLINE 1024	   /* max string size */
-#define HDRLINES 4		   /* number of header lines in a trace file */
-#define LINENUM(i) (i + 5) /* cnvt trace request nums to linenums (origin 1) */
+/* 기타 */
+#define MAXLINE 1024	   /* 문자열 최대 크기 */
+#define HDRLINES 4		   /* trace file의 header 줄 수 */
+#define LINENUM(i) (i + 5) /* trace 요청 번호를 줄 번호로 변환(시작은 1) */
 
-/* Returns true if p is ALIGNMENT-byte aligned */
+/* p가 ALIGNMENT 바이트 정렬이면 true를 반환 */
 #define IS_ALIGNED(p) ((((unsigned int)(p)) % ALIGNMENT) == 0)
 
 /******************************
- * The key compound data types
+ * 핵심 복합 데이터 타입
  *****************************/
 
-/* Records the extent of each block's payload */
+/* 각 block의 payload 범위를 기록 */
 typedef struct range_t
 {
-	char *lo;			  /* low payload address */
-	char *hi;			  /* high payload address */
-	struct range_t *next; /* next list element */
+	char *lo;			  /* payload의 시작 주소 */
+	char *hi;			  /* payload의 끝 주소 */
+	struct range_t *next; /* 다음 list 원소 */
 } range_t;
 
-/* Characterizes a single trace operation (allocator request) */
+/* 단일 trace 연산(allocator 요청)의 특성을 나타냄 */
 typedef struct
 {
 	enum
@@ -55,27 +55,26 @@ typedef struct
 		ALLOC,
 		FREE,
 		REALLOC
-	} type;	   /* type of request */
-	int index; /* index for free() to use later */
-	int size;  /* byte size of alloc/realloc request */
+	} type;	   /* 요청 타입 */
+	int index; /* 나중에 free()에서 사용할 index */
+	int size;  /* alloc/realloc 요청의 바이트 크기 */
 } traceop_t;
 
-/* Holds the information for one trace file*/
+/* 하나의 trace file 정보를 담음 */
 typedef struct
 {
-	int sugg_heapsize;	 /* suggested heap size (unused) */
-	int num_ids;		 /* number of alloc/realloc ids */
-	int num_ops;		 /* number of distinct requests */
-	int weight;			 /* weight for this trace (unused) */
-	traceop_t *ops;		 /* array of requests */
-	char **blocks;		 /* array of ptrs returned by malloc/realloc... */
-	size_t *block_sizes; /* ... and a corresponding array of payload sizes */
+	int sugg_heapsize;	 /* 권장 heap 크기(사용하지 않음) */
+	int num_ids;		 /* alloc/realloc id의 개수 */
+	int num_ops;		 /* 서로 다른 요청의 수 */
+	int weight;			 /* 이 trace의 가중치(사용하지 않음) */
+	traceop_t *ops;		 /* 요청 배열 */
+	char **blocks;		 /* malloc/realloc이 반환한 ptr 배열... */
+	size_t *block_sizes; /* ...및 그에 대응하는 payload 크기 배열 */
 } trace_t;
 
 /*
- * Holds the params to the xxx_speed functions, which are timed by fcyc.
- * This struct is necessary because fcyc accepts only a pointer array
- * as input.
+ * fcyc로 시간을 재는 xxx_speed 함수에 전달할 파라미터를 담습니다.
+ * fcyc는 입력으로 pointer 배열만 받기 때문에 이 struct가 필요합니다.
  */
 typedef struct
 {
@@ -83,59 +82,59 @@ typedef struct
 	range_t *ranges;
 } speed_t;
 
-/* Summarizes the important stats for some malloc function on some trace */
+/* 특정 trace에서 malloc 함수의 중요한 통계를 요약 */
 typedef struct
 {
-	/* defined for both libc malloc and student malloc package (mm.c) */
-	double ops;	 /* number of ops (malloc/free/realloc) in the trace */
-	int valid;	 /* was the trace processed correctly by the allocator? */
-	double secs; /* number of secs needed to run the trace */
+	/* libc malloc과 학생 malloc 패키지(mm.c) 모두에 대해 정의됨 */
+	double ops;	 /* trace 내 op 수(malloc/free/realloc) */
+	int valid;	 /* allocator가 trace를 올바르게 처리했는가? */
+	double secs; /* trace 실행에 걸린 시간(초) */
 
-	/* defined only for the student malloc package */
-	double util; /* space utilization for this trace (always 0 for libc) */
+	/* 학생 malloc 패키지에 대해서만 정의됨 */
+	double util; /* 이 trace의 space utilization(libc는 항상 0) */
 
-	/* Note: secs and util are only defined if valid is true */
+	/* 참고: secs와 util은 valid가 true일 때만 의미가 있습니다 */
 } stats_t;
 
 /********************
- * Global variables
+ * 전역 변수
  *******************/
-int verbose = 0;	   /* global flag for verbose output */
-static int errors = 0; /* number of errs found when running student malloc */
-char msg[MAXLINE];	   /* for whenever we need to compose an error message */
+int verbose = 0;	   /* 상세 출력을 위한 전역 플래그 */
+static int errors = 0; /* 학생 malloc 실행 중 발견한 에러 수 */
+char msg[MAXLINE];	   /* 에러 메시지를 조합할 때 사용할 버퍼 */
 
-/* Directory where default tracefiles are found */
+/* 기본 tracefiles를 찾는 디렉터리 */
 static char tracedir[MAXLINE] = TRACEDIR;
 
-/* The filenames of the default tracefiles */
+/* 기본 tracefiles의 파일명 */
 static char *default_tracefiles[] = {
 	DEFAULT_TRACEFILES, NULL};
 
 /*********************
- * Function prototypes
+ * 함수 prototype
  *********************/
 
-/* these functions manipulate range lists */
+/* range list를 다루는 함수 */
 static int add_range(range_t **ranges, char *lo, int size,
 					 int tracenum, int opnum);
 static void remove_range(range_t **ranges, char *lo);
 static void clear_ranges(range_t **ranges);
 
-/* These functions read, allocate, and free storage for traces */
+/* trace를 읽고, 저장 공간을 할당하고, 해제하는 함수 */
 static trace_t *read_trace(char *tracedir, char *filename);
 static void free_trace(trace_t *trace);
 
-/* Routines for evaluating the correctness and speed of libc malloc */
+/* libc malloc의 정확성과 속도를 평가하는 루틴 */
 static int eval_libc_valid(trace_t *trace, int tracenum);
 static void eval_libc_speed(void *ptr);
 
-/* Routines for evaluating correctnes, space utilization, and speed
-   of the student's malloc package in mm.c */
+/* mm.c에 있는 학생 malloc 패키지의 정확성, space utilization,
+   속도를 평가하는 루틴 */
 static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges);
 static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges);
 static void eval_mm_speed(void *ptr);
 
-/* Various helper routines */
+/* 여러 보조 루틴 */
 static void printresults(int n, stats_t *stats);
 static void usage(void);
 static void unix_error(char *msg);
@@ -143,30 +142,30 @@ static void malloc_error(int tracenum, int opnum, char *msg);
 static void app_error(char *msg);
 
 /**************
- * Main routine
+ * 메인 루틴
  **************/
 int main(int argc, char **argv)
 {
 	int i;
 	int c;
-	char **tracefiles = NULL;	/* null-terminated array of trace file names */
-	int num_tracefiles = 0;		/* the number of traces in that array */
-	trace_t *trace = NULL;		/* stores a single trace file in memory */
-	range_t *ranges = NULL;		/* keeps track of block extents for one trace */
-	stats_t *libc_stats = NULL; /* libc stats for each trace */
-	stats_t *mm_stats = NULL;	/* mm (i.e. student) stats for each trace */
-	speed_t speed_params;		/* input parameters to the xx_speed routines */
+	char **tracefiles = NULL;	/* NULL로 끝나는 trace file 이름 배열 */
+	int num_tracefiles = 0;		/* 위 배열에 들어 있는 trace 수 */
+	trace_t *trace = NULL;		/* 메모리에 저장된 단일 trace file */
+	range_t *ranges = NULL;		/* 한 trace의 block 범위를 추적 */
+	stats_t *libc_stats = NULL; /* 각 trace에 대한 libc 통계 */
+	stats_t *mm_stats = NULL;	/* 각 trace에 대한 mm(학생) 통계 */
+	speed_t speed_params;		/* xx_speed 루틴에 전달할 입력 파라미터 */
 
-	int team_check = 1; /* If set, check team structure (reset by -a) */
-	int run_libc = 0;	/* If set, run libc malloc (set by -l) */
-	int autograder = 0; /* If set, emit summary info for autograder (-g) */
+	int team_check = 1; /* 설정되면 팀 struct를 검사(-a로 해제) */
+	int run_libc = 0;	/* 설정되면 libc malloc도 실행(-l로 설정) */
+	int autograder = 0; /* 설정되면 autograder용 요약 정보 출력(-g) */
 
-	/* temporaries used to compute the performance index */
+	/* 성능 지수를 계산할 때 사용할 임시 변수 */
 	double secs, ops, util, avg_mm_util, avg_mm_throughput, p1, p2, perfindex;
 	int numcorrect;
 
 	/*
-	 * Read and interpret the command line arguments
+	 * 명령줄 인자를 읽고 해석합니다.
 	 */
 	while ((c = getopt(argc, argv, "f:t:hvVgal")) != EOF)
 	{
@@ -174,10 +173,10 @@ int main(int argc, char **argv)
 
 		switch (c)
 		{
-		case 'g': /* Generate summary info for the autograder */
+		case 'g': /* autograder용 요약 정보를 생성 */
 			autograder = 1;
 			break;
-		case 'f': /* Use one specific trace file only (relative to curr dir) */
+		case 'f': /* 특정 trace file 하나만 사용(현재 디렉터리 기준 상대 경로) */
 			num_tracefiles = 1;
 			if ((tracefiles = realloc(tracefiles, 2 * sizeof(char *))) == NULL)
 				unix_error("ERROR: realloc failed in main");
@@ -185,26 +184,26 @@ int main(int argc, char **argv)
 			tracefiles[0] = strdup(optarg);
 			tracefiles[1] = NULL;
 			break;
-		case 't':					 /* Directory where the traces are located */
-			if (num_tracefiles == 1) /* ignore if -f already encountered */
+		case 't':					 /* trace가 위치한 디렉터리 */
+			if (num_tracefiles == 1) /* 이미 -f가 있었다면 무시 */
 				break;
 			strcpy(tracedir, optarg);
 			if (tracedir[strlen(tracedir) - 1] != '/')
-				strcat(tracedir, "/"); /* path always ends with "/" */
+				strcat(tracedir, "/"); /* path는 항상 "/"로 끝나게 함 */
 			break;
-		case 'a': /* Don't check team structure */
+		case 'a': /* 팀 struct를 검사하지 않음 */
 			team_check = 0;
 			break;
-		case 'l': /* Run libc malloc */
+		case 'l': /* libc malloc 실행 */
 			run_libc = 1;
 			break;
-		case 'v': /* Print per-trace performance breakdown */
+		case 'v': /* trace별 성능 세부 정보 출력 */
 			verbose = 1;
 			break;
-		case 'V': /* Be more verbose than -v */
+		case 'V': /* -v보다 더 자세하게 출력 */
 			verbose = 2;
 			break;
-		case 'h': /* Print this message */
+		case 'h': /* 도움말 출력 */
 			usage();
 			exit(0);
 		default:
@@ -214,11 +213,11 @@ int main(int argc, char **argv)
 	}
 
 	/*
-	 * Check and print team info
+	 * 팀 정보를 검사하고 출력합니다.
 	 */
 	if (team_check)
 	{
-		/* Students must fill in their team information */
+		/* 학생은 팀 정보를 반드시 채워야 합니다 */
 		if (!strcmp(team.teamname, ""))
 		{
 			printf("ERROR: Please provide the information about your team in mm.c.\n");
@@ -245,8 +244,8 @@ int main(int argc, char **argv)
 	}
 
 	/*
-	 * If no -f command line arg, then use the entire set of tracefiles
-	 * defined in default_traces[]
+	 * -f 명령줄 인자가 없으면 default_traces[]에 정의된
+	 * tracefiles 전체를 사용합니다.
 	 */
 	if (tracefiles == NULL)
 	{
@@ -255,23 +254,23 @@ int main(int argc, char **argv)
 		printf("Using default tracefiles in %s\n", tracedir);
 	}
 
-	/* Initialize the timing package */
+	/* timing 패키지를 초기화 */
 	init_fsecs();
 
 	/*
-	 * Optionally run and evaluate the libc malloc package
+	 * 필요하면 libc malloc 패키지를 실행하고 평가합니다.
 	 */
 	if (run_libc)
 	{
 		if (verbose > 1)
 			printf("\nTesting libc malloc\n");
 
-		/* Allocate libc stats array, with one stats_t struct per tracefile */
+		/* tracefile마다 하나의 stats_t를 갖는 libc 통계 배열을 할당 */
 		libc_stats = (stats_t *)calloc(num_tracefiles, sizeof(stats_t));
 		if (libc_stats == NULL)
 			unix_error("libc_stats calloc in main failed");
 
-		/* Evaluate the libc malloc package using the K-best scheme */
+		/* K-best scheme으로 libc malloc 패키지를 평가 */
 		for (i = 0; i < num_tracefiles; i++)
 		{
 			trace = read_trace(tracedir, tracefiles[i]);
@@ -289,7 +288,7 @@ int main(int argc, char **argv)
 			free_trace(trace);
 		}
 
-		/* Display the libc results in a compact table */
+		/* libc 결과를 간결한 표 형태로 출력 */
 		if (verbose)
 		{
 			printf("\nResults for libc malloc:\n");
@@ -298,20 +297,20 @@ int main(int argc, char **argv)
 	}
 
 	/*
-	 * Always run and evaluate the student's mm package
+	 * 학생의 mm 패키지는 항상 실행하고 평가합니다.
 	 */
 	if (verbose > 1)
 		printf("\nTesting mm malloc\n");
 
-	/* Allocate the mm stats array, with one stats_t struct per tracefile */
+	/* tracefile마다 하나의 stats_t를 갖는 mm 통계 배열을 할당 */
 	mm_stats = (stats_t *)calloc(num_tracefiles, sizeof(stats_t));
 	if (mm_stats == NULL)
 		unix_error("mm_stats calloc in main failed");
 
-	/* Initialize the simulated memory system in memlib.c */
+	/* memlib.c의 시뮬레이션 메모리 시스템을 초기화 */
 	mem_init();
 
-	/* Evaluate student's mm malloc package using the K-best scheme */
+	/* K-best scheme으로 학생의 mm malloc 패키지를 평가 */
 	for (i = 0; i < num_tracefiles; i++)
 	{
 		trace = read_trace(tracedir, tracefiles[i]);
@@ -333,7 +332,7 @@ int main(int argc, char **argv)
 		free_trace(trace);
 	}
 
-	/* Display the mm results in a compact table */
+	/* mm 결과를 간결한 표 형태로 출력 */
 	if (verbose)
 	{
 		printf("\nResults for mm malloc:\n");
@@ -342,7 +341,7 @@ int main(int argc, char **argv)
 	}
 
 	/*
-	 * Accumulate the aggregate statistics for the student's mm package
+	 * 학생 mm 패키지의 종합 통계를 누적합니다.
 	 */
 	secs = 0;
 	ops = 0;
@@ -359,7 +358,7 @@ int main(int argc, char **argv)
 	avg_mm_util = util / num_tracefiles;
 
 	/*
-	 * Compute and print the performance index
+	 * 성능 지수를 계산해 출력합니다.
 	 */
 	if (errors == 0)
 	{
@@ -383,7 +382,7 @@ int main(int argc, char **argv)
 			   perfindex);
 	}
 	else
-	{ /* There were errors */
+	{ /* 에러가 있었음 */
 		perfindex = 0.0;
 		printf("Terminated with %d errors\n", errors);
 	}
@@ -398,16 +397,14 @@ int main(int argc, char **argv)
 }
 
 /*****************************************************************
- * The following routines manipulate the range list, which keeps
- * track of the extent of every allocated block payload. We use the
- * range list to detect any overlapping allocated blocks.
+ * 아래 루틴은 range list를 다룹니다. range list는 할당된 각 block의
+ * payload 범위를 추적하며, 할당 block끼리 겹치는지 검사하는 데 사용합니다.
  ****************************************************************/
 
 /*
- * add_range - As directed by request opnum in trace tracenum,
- *     we've just called the student's mm_malloc to allocate a block of
- *     size bytes at addr lo. After checking the block for correctness,
- *     we create a range struct for this block and add it to the range list.
+ * add_range - trace tracenum의 opnum 요청에 따라 학생의 mm_malloc을 호출해
+ *     주소 lo에 size 바이트 block을 막 할당한 상태입니다. block의 정확성을
+ *     검사한 뒤, 이 block용 range struct를 만들어 range list에 추가합니다.
  */
 static int add_range(range_t **ranges, char *lo, int size,
 					 int tracenum, int opnum)
@@ -418,7 +415,7 @@ static int add_range(range_t **ranges, char *lo, int size,
 
 	assert(size > 0);
 
-	/* Payload addresses must be ALIGNMENT-byte aligned */
+	/* Payload 주소는 ALIGNMENT 바이트 정렬이어야 함 */
 	if (!IS_ALIGNED(lo))
 	{
 		sprintf(msg, "Payload address (%p) not aligned to %d bytes",
@@ -427,7 +424,7 @@ static int add_range(range_t **ranges, char *lo, int size,
 		return 0;
 	}
 
-	/* The payload must lie within the extent of the heap */
+	/* Payload는 heap 범위 안에 있어야 함 */
 	if ((lo < (char *)mem_heap_lo()) || (lo > (char *)mem_heap_hi()) ||
 		(hi < (char *)mem_heap_lo()) || (hi > (char *)mem_heap_hi()))
 	{
@@ -437,7 +434,7 @@ static int add_range(range_t **ranges, char *lo, int size,
 		return 0;
 	}
 
-	/* The payload must not overlap any other payloads */
+	/* Payload는 다른 payload와 겹치면 안 됨 */
 	for (p = *ranges; p != NULL; p = p->next)
 	{
 		if ((lo >= p->lo && lo <= p->hi) ||
@@ -451,8 +448,8 @@ static int add_range(range_t **ranges, char *lo, int size,
 	}
 
 	/*
-	 * Everything looks OK, so remember the extent of this block
-	 * by creating a range struct and adding it the range list.
+	 * 모든 것이 정상이라면 range struct를 만들어 range list에 추가하고
+	 * 이 block의 범위를 기록합니다.
 	 */
 	if ((p = (range_t *)malloc(sizeof(range_t))) == NULL)
 		unix_error("malloc error in add_range");
@@ -464,7 +461,7 @@ static int add_range(range_t **ranges, char *lo, int size,
 }
 
 /*
- * remove_range - Free the range record of block whose payload starts at lo
+ * remove_range - payload 시작 주소가 lo인 block의 range record를 해제합니다.
  */
 static void remove_range(range_t **ranges, char *lo)
 {
@@ -486,7 +483,7 @@ static void remove_range(range_t **ranges, char *lo)
 }
 
 /*
- * clear_ranges - free all of the range records for a trace
+ * clear_ranges - 한 trace의 모든 range record를 해제합니다.
  */
 static void clear_ranges(range_t **ranges)
 {
@@ -502,11 +499,11 @@ static void clear_ranges(range_t **ranges)
 }
 
 /**********************************************
- * The following routines manipulate tracefiles
+ * 아래 루틴은 tracefiles를 다룹니다.
  *********************************************/
 
 /*
- * read_trace - read a trace file and store it in memory
+ * read_trace - trace file을 읽어 메모리에 저장합니다.
  */
 static trace_t *read_trace(char *tracedir, char *filename)
 {
@@ -521,11 +518,11 @@ static trace_t *read_trace(char *tracedir, char *filename)
 	if (verbose > 1)
 		printf("Reading tracefile: %s\n", filename);
 
-	/* Allocate the trace record */
+	/* trace record를 할당 */
 	if ((trace = (trace_t *)malloc(sizeof(trace_t))) == NULL)
 		unix_error("malloc 1 failed in read_trance");
 
-	/* Read the trace file header */
+	/* trace file header를 읽음 */
 	strcpy(path, tracedir);
 	strcat(path, filename);
 	if ((tracefile = fopen(path, "r")) == NULL)
@@ -533,27 +530,27 @@ static trace_t *read_trace(char *tracedir, char *filename)
 		sprintf(msg, "Could not open %s in read_trace", path);
 		unix_error(msg);
 	}
-	fscanf(tracefile, "%d", &(trace->sugg_heapsize)); /* not used */
+	fscanf(tracefile, "%d", &(trace->sugg_heapsize)); /* 사용하지 않음 */
 	fscanf(tracefile, "%d", &(trace->num_ids));
 	fscanf(tracefile, "%d", &(trace->num_ops));
-	fscanf(tracefile, "%d", &(trace->weight)); /* not used */
+	fscanf(tracefile, "%d", &(trace->weight)); /* 사용하지 않음 */
 
-	/* We'll store each request line in the trace in this array */
+	/* trace의 각 요청 줄은 이 배열에 저장 */
 	if ((trace->ops =
 			 (traceop_t *)malloc(trace->num_ops * sizeof(traceop_t))) == NULL)
 		unix_error("malloc 2 failed in read_trace");
 
-	/* We'll keep an array of pointers to the allocated blocks here... */
+	/* 할당된 block을 가리키는 pointer 배열을 여기에 저장... */
 	if ((trace->blocks =
 			 (char **)malloc(trace->num_ids * sizeof(char *))) == NULL)
 		unix_error("malloc 3 failed in read_trace");
 
-	/* ... along with the corresponding byte sizes of each block */
+	/* ... 그리고 각 block에 대응하는 바이트 크기도 함께 저장 */
 	if ((trace->block_sizes =
 			 (size_t *)malloc(trace->num_ids * sizeof(size_t))) == NULL)
 		unix_error("malloc 4 failed in read_trace");
 
-	/* read every request line in the trace file */
+	/* trace file의 모든 요청 줄을 읽음 */
 	index = 0;
 	op_index = 0;
 	while (fscanf(tracefile, "%s", type) != EOF)
@@ -594,8 +591,8 @@ static trace_t *read_trace(char *tracedir, char *filename)
 }
 
 /*
- * free_trace - Free the trace record and the three arrays it points
- *              to, all of which were allocated in read_trace().
+ * free_trace - trace record와, 그것이 가리키는 세 배열을 해제합니다.
+ *              모두 read_trace()에서 할당된 것들입니다.
  */
 void free_trace(trace_t *trace)
 {
@@ -606,12 +603,12 @@ void free_trace(trace_t *trace)
 }
 
 /**********************************************************************
- * The following functions evaluate the correctness, space utilization,
- * and throughput of the libc and mm malloc packages.
+ * 아래 함수는 libc와 mm malloc 패키지의 정확성, space utilization,
+ * throughput을 평가합니다.
  **********************************************************************/
 
 /*
- * eval_mm_valid - Check the mm malloc package for correctness
+ * eval_mm_valid - mm malloc 패키지의 정확성을 검사합니다.
  */
 static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges)
 {
@@ -623,18 +620,18 @@ static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges)
 	char *oldp;
 	char *p;
 
-	/* Reset the heap and free any records in the range list */
+	/* heap을 초기화하고 range list의 기록을 모두 해제 */
 	mem_reset_brk();
 	clear_ranges(ranges);
 
-	/* Call the mm package's init function */
+	/* mm 패키지의 init 함수를 호출 */
 	if (mm_init() < 0)
 	{
 		malloc_error(tracenum, 0, "mm_init failed.");
 		return 0;
 	}
 
-	/* Interpret each operation in the trace in order */
+	/* trace의 각 연산을 순서대로 해석 */
 	for (i = 0; i < trace->num_ops; i++)
 	{
 		index = trace->ops[i].index;
@@ -645,7 +642,7 @@ static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges)
 
 		case ALLOC: /* mm_malloc */
 
-			/* Call the student's malloc */
+			/* 학생의 malloc을 호출 */
 			if ((p = mm_malloc(size)) == NULL)
 			{
 				malloc_error(tracenum, i, "mm_malloc failed.");
@@ -653,28 +650,28 @@ static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges)
 			}
 
 			/*
-			 * Test the range of the new block for correctness and add it
-			 * to the range list if OK. The block must be  be aligned properly,
-			 * and must not overlap any currently allocated block.
+			 * 새 block의 range가 올바른지 검사하고, 이상 없으면 range list에
+			 * 추가합니다. block은 올바르게 정렬되어야 하며 현재 할당된 다른
+			 * block과 겹치면 안 됩니다.
 			 */
 			if (add_range(ranges, p, size, tracenum, i) == 0)
 				return 0;
 
 			/* ADDED: cgw
-			 * fill range with low byte of index.  This will be used later
-			 * if we realloc the block and wish to make sure that the old
-			 * data was copied to the new block
+			 * range를 index의 하위 바이트 값으로 채웁니다. 나중에 block을
+			 * realloc할 때 이전 데이터가 새 block으로 복사됐는지 확인하는 데
+			 * 사용합니다.
 			 */
 			memset(p, index & 0xFF, size);
 
-			/* Remember region */
+			/* 영역을 기록 */
 			trace->blocks[index] = p;
 			trace->block_sizes[index] = size;
 			break;
 
 		case REALLOC: /* mm_realloc */
 
-			/* Call the student's realloc */
+			/* 학생의 realloc을 호출 */
 			oldp = trace->blocks[index];
 			if ((newp = mm_realloc(oldp, size)) == NULL)
 			{
@@ -682,17 +679,16 @@ static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges)
 				return 0;
 			}
 
-			/* Remove the old region from the range list */
+			/* range list에서 기존 영역을 제거 */
 			remove_range(ranges, oldp);
 
-			/* Check new block for correctness and add it to range list */
+			/* 새 block의 정확성을 검사한 뒤 range list에 추가 */
 			if (add_range(ranges, newp, size, tracenum, i) == 0)
 				return 0;
 
 			/* ADDED: cgw
-			 * Make sure that the new block contains the data from the old
-			 * block and then fill in the new block with the low order byte
-			 * of the new index
+			 * 새 block이 기존 block의 데이터를 포함하는지 확인한 다음,
+			 * 새 index의 하위 바이트로 새 block을 채웁니다.
 			 */
 			oldsize = trace->block_sizes[index];
 			if (size < oldsize)
@@ -708,14 +704,14 @@ static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges)
 			}
 			memset(newp, index & 0xFF, size);
 
-			/* Remember region */
+			/* 영역을 기록 */
 			trace->blocks[index] = newp;
 			trace->block_sizes[index] = size;
 			break;
 
 		case FREE: /* mm_free */
 
-			/* Remove region from list and call student's free function */
+			/* list에서 영역을 제거하고 학생의 free 함수를 호출 */
 			p = trace->blocks[index];
 			remove_range(ranges, p);
 			mm_free(p);
@@ -726,19 +722,18 @@ static int eval_mm_valid(trace_t *trace, int tracenum, range_t **ranges)
 		}
 	}
 
-	/* As far as we know, this is a valid malloc package */
+	/* 현재까지 판단으로는 유효한 malloc 패키지입니다 */
 	return 1;
 }
 
 /*
- * eval_mm_util - Evaluate the space utilization of the student's package
- *   The idea is to remember the high water mark "hwm" of the heap for
- *   an optimal allocator, i.e., no gaps and no internal fragmentation.
- *   Utilization is the ratio hwm/heapsize, where heapsize is the
- *   size of the heap in bytes after running the student's malloc
- *   package on the trace. Note that our implementation of mem_sbrk()
- *   doesn't allow the students to decrement the brk pointer, so brk
- *   is always the high water mark of the heap.
+ * eval_mm_util - 학생 패키지의 space utilization을 평가합니다.
+ *   핵심 아이디어는 최적 allocator, 즉 gap도 내부 단편화도 없는 allocator에 대해
+ *   heap의 high water mark("hwm")를 기억하는 것입니다.
+ *   Utilization은 hwm/heapsize 비율이며, heapsize는 해당 trace에서
+ *   학생 malloc 패키지를 실행한 뒤의 heap 크기(바이트)입니다.
+ *   우리의 mem_sbrk() 구현은 학생이 brk 포인터를 줄일 수 없게 하므로,
+ *   brk는 항상 heap의 high water mark가 됩니다.
  *
  */
 static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges)
@@ -751,7 +746,7 @@ static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges)
 	char *p;
 	char *newp, *oldp;
 
-	/* initialize the heap and the mm malloc package */
+	/* heap과 mm malloc 패키지를 초기화 */
 	mem_reset_brk();
 	if (mm_init() < 0)
 		app_error("mm_init failed in eval_mm_util");
@@ -768,15 +763,14 @@ static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges)
 			if ((p = mm_malloc(size)) == NULL)
 				app_error("mm_malloc failed in eval_mm_util");
 
-			/* Remember region and size */
+			/* 영역과 크기를 기록 */
 			trace->blocks[index] = p;
 			trace->block_sizes[index] = size;
 
-			/* Keep track of current total size
-			 * of all allocated blocks */
+			/* 현재 할당된 모든 block의 총 크기를 추적 */
 			total_size += size;
 
-			/* Update statistics */
+			/* 통계를 갱신 */
 			max_total_size = (total_size > max_total_size) ? total_size : max_total_size;
 			break;
 
@@ -789,15 +783,14 @@ static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges)
 			if ((newp = mm_realloc(oldp, newsize)) == NULL)
 				app_error("mm_realloc failed in eval_mm_util");
 
-			/* Remember region and size */
+			/* 영역과 크기를 기록 */
 			trace->blocks[index] = newp;
 			trace->block_sizes[index] = newsize;
 
-			/* Keep track of current total size
-			 * of all allocated blocks */
+			/* 현재 할당된 모든 block의 총 크기를 추적 */
 			total_size += (newsize - oldsize);
 
-			/* Update statistics */
+			/* 통계를 갱신 */
 			max_total_size = (total_size > max_total_size) ? total_size : max_total_size;
 			break;
 
@@ -808,8 +801,7 @@ static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges)
 
 			mm_free(p);
 
-			/* Keep track of current total size
-			 * of all allocated blocks */
+			/* 현재 할당된 모든 block의 총 크기를 추적 */
 			total_size -= size;
 
 			break;
@@ -823,8 +815,8 @@ static double eval_mm_util(trace_t *trace, int tracenum, range_t **ranges)
 }
 
 /*
- * eval_mm_speed - This is the function that is used by fcyc()
- *    to measure the running time of the mm malloc package.
+ * eval_mm_speed - fcyc()가 mm malloc 패키지의 실행 시간을
+ *    측정할 때 사용하는 함수입니다.
  */
 static void eval_mm_speed(void *ptr)
 {
@@ -832,12 +824,12 @@ static void eval_mm_speed(void *ptr)
 	char *p, *newp, *oldp, *block;
 	trace_t *trace = ((speed_t *)ptr)->trace;
 
-	/* Reset the heap and initialize the mm package */
+	/* heap을 초기화하고 mm 패키지를 초기화 */
 	mem_reset_brk();
 	if (mm_init() < 0)
 		app_error("mm_init failed in eval_mm_speed");
 
-	/* Interpret each trace request */
+	/* 각 trace 요청을 해석 */
 	for (i = 0; i < trace->num_ops; i++)
 		switch (trace->ops[i].type)
 		{
@@ -871,9 +863,9 @@ static void eval_mm_speed(void *ptr)
 }
 
 /*
- * eval_libc_valid - We run this function to make sure that the
- *    libc malloc can run to completion on the set of traces.
- *    We'll be conservative and terminate if any libc malloc call fails.
+ * eval_libc_valid - libc malloc이 이 trace 집합을 끝까지
+ *    실행할 수 있는지 확인하기 위해 실행합니다.
+ *    libc malloc 호출 하나라도 실패하면 보수적으로 종료합니다.
  *
  */
 static int eval_libc_valid(trace_t *trace, int tracenum)
@@ -919,9 +911,8 @@ static int eval_libc_valid(trace_t *trace, int tracenum)
 }
 
 /*
- * eval_libc_speed - This is the function that is used by fcyc() to
- *    measure the running time of the libc malloc package on the set
- *    of traces.
+ * eval_libc_speed - fcyc()가 이 trace 집합에서 libc malloc 패키지의
+ *    실행 시간을 측정할 때 사용하는 함수입니다.
  */
 static void eval_libc_speed(void *ptr)
 {
@@ -962,11 +953,11 @@ static void eval_libc_speed(void *ptr)
 }
 
 /*************************************
- * Some miscellaneous helper routines
+ * 여러 기타 보조 루틴
  ************************************/
 
 /*
- * printresults - prints a performance summary for some malloc package
+ * printresults - malloc 패키지의 성능 요약을 출력합니다.
  */
 static void printresults(int n, stats_t *stats)
 {
@@ -975,7 +966,7 @@ static void printresults(int n, stats_t *stats)
 	double ops = 0;
 	double util = 0;
 
-	/* Print the individual results for each trace */
+	/* 각 trace의 개별 결과를 출력 */
 	printf("%5s%7s %5s%8s%10s%6s\n",
 		   "trace", " valid", "util", "ops", "secs", "Kops");
 	for (i = 0; i < n; i++)
@@ -1005,7 +996,7 @@ static void printresults(int n, stats_t *stats)
 		}
 	}
 
-	/* Print the aggregate results for the set of traces */
+	/* trace 집합의 종합 결과를 출력 */
 	if (errors == 0)
 	{
 		printf("%12s%5.0f%%%8.0f%10.6f%6.0f\n",
@@ -1027,7 +1018,7 @@ static void printresults(int n, stats_t *stats)
 }
 
 /*
- * app_error - Report an arbitrary application error
+ * app_error - 일반적인 애플리케이션 에러를 보고합니다.
  */
 void app_error(char *msg)
 {
@@ -1036,7 +1027,7 @@ void app_error(char *msg)
 }
 
 /*
- * unix_error - Report a Unix-style error
+ * unix_error - Unix 스타일 에러를 보고합니다.
  */
 void unix_error(char *msg)
 {
@@ -1045,7 +1036,7 @@ void unix_error(char *msg)
 }
 
 /*
- * malloc_error - Report an error returned by the mm_malloc package
+ * malloc_error - mm_malloc 패키지가 반환한 에러를 보고합니다.
  */
 void malloc_error(int tracenum, int opnum, char *msg)
 {
@@ -1054,7 +1045,7 @@ void malloc_error(int tracenum, int opnum, char *msg)
 }
 
 /*
- * usage - Explain the command line arguments
+ * usage - 명령줄 인자를 설명합니다.
  */
 static void usage(void)
 {

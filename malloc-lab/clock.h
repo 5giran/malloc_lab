@@ -1,21 +1,21 @@
-/* Routines for using cycle counter */
+/* cycle counter를 사용하는 루틴 */
 
-/* Start the counter */
+/* counter를 시작 */
 void start_counter();
 
-/* Get # cycles since counter started */
+/* counter 시작 이후의 cycle 수를 가져옴 */
 double get_counter();
 
-/* Measure overhead for counter */
+/* counter overhead를 측정 */
 double ovhd();
 
-/* Determine clock rate of processor (using a default sleeptime) */
+/* processor의 clock rate를 결정(기본 sleeptime 사용) */
 double mhz(int verbose);
 
-/* Determine clock rate of processor, having more control over accuracy */
+/* 정확도를 더 세밀하게 제어하며 processor의 clock rate를 결정 */
 double mhz_full(int verbose, int sleeptime);
 
-/** Special counters that compensate for timer interrupt overhead */
+/** timer interrupt overhead를 보정하는 특수 counter */
 
 void start_comp_counter();
 
