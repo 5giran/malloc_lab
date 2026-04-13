@@ -1,5 +1,6 @@
 #
 # Malloc Lab용 학생 Makefile
+# 클로드한테 도커환경 고려해서 판단시킬것
 #
 TEAM = bovik
 VERSION = 1
@@ -27,5 +28,4 @@ handin:
 
 clean:
 	rm -f *~ *.o mdriver
-
 
