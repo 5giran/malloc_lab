@@ -65,10 +65,27 @@ team_t team = {
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
-/* 힙 시작 포인터 */
-static char *heap_listp;
+/* exp 구현: 이전, 이후 포인터 매크로 */
+#define PREV_FREE(bp) (*(char **)(bp))
+#define NEXT_FREE(bp) (*(char **)((char *)(bp) + DSIZE))
 
 
+static char *heap_listp; /* 힙 시작 포인터 */
+static char *free_listp; /* free 리스트 시작 포인터 */
+
+
+/* 전방 선언 */
+static void *coalesce(void *bp);
+static void *extend_heap(size_t words);
+static void *find_fit(size_t asize);
+static void place(void *bp, size_t asize);
+static void add_free(char *bp);
+static void remove_free(char *bp);
+
+
+/* free 블록을 처리하는 함수
+ * 그러므로 양쪽이 alloc 되어있대도 나(bp)는 free
+ */
 static void *coalesce(void *bp)
 {
     /* alloc 뽑기 - 헤더값, 푸터값 주소 선택 - 이전블럭, 이후블럭 선택, 모두 매크로에 구현되어있으니 사용해야함 */
@@ -78,28 +95,36 @@ static void *coalesce(void *bp)
 
     /* PUT으로 헤더/푸터를 새로 써주고, 현재 사이즈에서 추가 사이즈 더해주기 */
     if (prev_alloc && next_alloc) {           /* case 1: 양쪽 다 allocated - 합칠 거 없음 */
+        add_free(bp); // 합칠 블록이 없으니 bp만 free 리스트에 추가
         return bp;
     }
     else if (prev_alloc && !next_alloc) {     /* case 2: 다음 블록이랑 현재 블록을 합침 */
+        remove_free(NEXT_BLKP(bp)); // + 다음 블록을 리스트에서 제거 (합칠거니까)
         size += GET_SIZE(HDRP(NEXT_BLKP(bp))); /* 현재 블럭의 크기에 더해진 다음 블럭의 크기 추가해주기 */
         PUT(HDRP(bp), PACK(size, 0));           /* 헤더 추가, 그냥 지금 블록 위치 앞에 */
         /* 헤더가 이미 업데이트 됐으므로 FTRP(NEXT_BLKP(bp))가 아니라 FTRP(bp)를 써도 된다. */
         PUT(FTRP(bp), PACK(size, 0));           /* 푸터: 합쳐진 다음 블록의 푸터 위치에 */
     }
     else if (!prev_alloc && next_alloc) {     /* case 3: 이전 블록이랑 현재 블록을 합침 */
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))); /* 블록 크기는 무조건 헤더에서 읽어와야함 */
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); /* 헤더: 이전 블럭 */
-        PUT(FTRP(bp), PACK(size, 0));             /* 푸터: 현재 블럭 */
-        bp = PREV_BLKP(bp);                       /* 시작점이 이전블록으로 옮겨가면 bp업데이트가 꼭 필요함 */
+        /* bp를 먼저 업데이트: PREV_BLKP 반복 호출 시 포인터 오염 방지 */
+        /* 먼저 업데이트하면 PREV_BLKP(bp)로 매번 계산하는게 아니라 bp만 호출하면 된다. */
+        bp = PREV_BLKP(bp);
+        remove_free(bp); // + 이전 블록을 리스트에서 제거
+        size += GET_SIZE(HDRP(bp)); /* 블록 크기는 무조건 헤더에서 읽어와야함 */
+        PUT(HDRP(bp), PACK(size, 0)); /* 헤더: 이전 블럭 */
+        PUT(FTRP(bp), PACK(size, 0)); /* 푸터: 합쳐진 블록의 푸터 */
     }
-    else {                                     /* case 4: 이전블록 + 현재블록 + 다음블록 */
+    else {                                        /* case 4: 양쪽 다 free */
+        remove_free(PREV_BLKP(bp));
+        remove_free(NEXT_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        size += GET_SIZE(FTRP(NEXT_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
 
+    add_free(bp); // 전부 합쳐진 블록을 free 리스트에 추가
     return bp;
 }
 
@@ -140,11 +165,9 @@ static void *find_fit(size_t asize)
 {
     void *bp;
     // for (초기값; 조건; 증감)
-    // 힙의 첫번째 블록 bp에서 시작; 현재블록의 size가 0이면 멈춰; 다음블록으로 이동 
-    for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {
-        /* free이면서(alloc이 0), 크기가 asize 이상인(최소크기 이상) 블록 찾기 */
-        // GET_ALLOC도 헤더에서 읽어봐야한다.
-        if (!GET_ALLOC(HDRP(bp)) && GET_SIZE(HDRP(bp)) >= asize)
+    // free 리스트만 순회
+    for (bp = free_listp; bp != NULL; bp = NEXT_FREE(bp)) {
+        if (GET_SIZE(HDRP(bp)) >= asize)
             return bp;
     }
     return NULL;
@@ -153,13 +176,15 @@ static void *find_fit(size_t asize)
 
 /* place: place는 find_fit으로 찾아온 블록을 실제로 할당 처리하는 함수
  * 할당 후 필요하면 분할
+ * 분할을 하든 안하든 free 리스트에서 제거해줘야함. 할당하면 free가 아니기때문
  */
 static void place(void *bp, size_t asize)
 {
     size_t csize = GET_SIZE(HDRP(bp)); // 현재 블록 크기
+    remove_free(bp); // 할당 되었으면 free list에서 제거
 
     // 남은 공간(현재 블록 크기 - asize)이 최소블록크기(2*DSIZE)이상이면 분할
-    if (csize - asize >= 2 * DSIZE)
+    if (csize - asize >= 3 * DSIZE)
     {
         // 분할 후 메모리 공간 변화를 PUT으로 하나하나 써줘야함
         /* 1. 앞 블록 헤더, 기존 헤더 위치에 덮어씀 */
@@ -172,6 +197,8 @@ static void place(void *bp, size_t asize)
         PUT(HDRP(NEXT_BLKP(bp)), PACK(csize - asize, 0));
         /* 4. 뒷 블록 푸터 */
         PUT(FTRP(NEXT_BLKP(bp)), PACK(csize - asize, 0));
+        /* 5. 분할 후 남은 블럭 공간 free list 추가 */
+        add_free(NEXT_BLKP(bp));
     } else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
@@ -185,7 +212,9 @@ static void place(void *bp, size_t asize)
  */
 int mm_init(void)
 {
+    free_listp = NULL; // + 처음에는 free 블록이 없음
     heap_listp = mem_sbrk(4 * WSIZE); // 1. 초기 힙 정의, 크기 할당 (힙 시작 주소에)
+    
     if (heap_listp == (void *)-1) // 2. mem_sbrk 함수가 실패 처리 코드를 내보냈을 때
         return -1; // 함수 반환타입이 int이므로 실패 -1
 
@@ -221,10 +250,11 @@ void *mm_malloc(size_t size)
     if (size <= DSIZE) {
         // DSIZE 로만 설정하면 헤더, 푸터만 위치할 수 있고 공간이 끝남
         // 최소한의 payload를 포함할 공간이 필요함 그래서 2 * DSIZE로 기본 값을 맞춰줘야함
-        asize = 2 * DSIZE;
+        asize = 3 * DSIZE;
     } else {
         /* size > DSIZE 일때 8의 배수로 맞춰주는 분기식 */
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE);
+        if (asize < 3 * DSIZE) asize = 3 * DSIZE;
     }
     
     bp = find_fit(asize);                        /* free 블록 탐색 */
@@ -282,4 +312,42 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
+}
+
+
+/* explicit list 함수 추가 */
+static void add_free(char *bp)
+{
+    // 1. 새블록의 next = 기존 free_listp
+    // NEXT_FREE는 읽는 매크로, NEXT_FREE(bp)가 bp의 next 포인터 위치이므로 거기에 값을 대입하면 됨
+    NEXT_FREE(bp) = free_listp;
+    // 2. 새블록의 prev = NULL
+    PREV_FREE(bp) = NULL;
+    // 3. 블록A의 prev = 새블록 (블록A가 NULL이 아닐 때만)
+    // 블록 A: 기존 free_listp가 가리키던 블록 (이전 free 블록)
+    if (free_listp != NULL)
+        PREV_FREE(free_listp) = bp;  // 블록A의 prev = 새블록
+    // 4. free_listp = 새블록
+    free_listp = bp;      // free_listp = 새블록 (맨 앞으로 업데이트)
+
+}
+
+
+static void remove_free(char *bp)
+{
+    // 1. bp의 prev가 NULL이면 (bp가 맨 앞)
+    if (PREV_FREE(bp) == NULL) {
+        // free_listp = bp의 next
+        free_listp = NEXT_FREE(bp);
+    } else {
+        // 2. bp의 prev가 있으면
+        // 블록A(기준 블록의 앞블록)의 next = bp의 next
+        NEXT_FREE(PREV_FREE(bp)) = NEXT_FREE(bp);
+    }
+
+    // 3. bp의 next가 NULL이면 (bp가 맨 뒤) → 아무것도 안 해도 됨
+    // 4. bp의 next가 있으면 → 블록B의 prev = bp의 prev
+    if (NEXT_FREE(bp) != NULL) {
+        PREV_FREE(NEXT_FREE(bp)) = PREV_FREE(bp);
+    }
 }
